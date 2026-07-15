@@ -23,7 +23,7 @@ MODEL = "llama-3.3-70b-versatile"
 # GSC CONFIG
 # ---------------------------
 
-SERVICE_ACCOUNT_FILE = "foxora-seo-agent-2119f123369f.json"
+SERVICE_ACCOUNT_FILE = "secrets/foxora-seo-agent-2119f123369f.json"
 
 def get_gsc_service():
     credentials = service_account.Credentials.from_service_account_file(
@@ -301,3 +301,90 @@ def gsc_pages(site_url: str):
     except Exception as e:
         return {"error": str(e)}
 
+
+
+
+@app.get("/audit")
+def audit(site_url: str):
+
+    try:
+
+        service = get_gsc_service()
+
+        start_date, end_date = get_date_range()
+
+        pages_request = {
+            "startDate": start_date,
+            "endDate": end_date,
+            "dimensions": ["page"],
+            "rowLimit": 20
+        }
+
+        pages = service.searchanalytics().query(
+            siteUrl=site_url,
+            body=pages_request
+        ).execute()
+
+        opportunities = []
+
+        for row in pages.get("rows", []):
+
+            clicks = row.get("clicks", 0)
+            impressions = row.get("impressions", 0)
+            position = row.get("position", 0)
+            url = row["keys"][0]
+
+            if impressions >= 20 and clicks == 0:
+
+                opportunities.append({
+                    "url": url,
+                    "clicks": clicks,
+                    "impressions": impressions,
+                    "position": round(position, 2),
+                    "reason": "High impressions but zero clicks"
+                })
+
+        prompt = f"""
+Analyze this SEO data.
+
+Data:
+{json.dumps(opportunities, indent=2)}
+
+Return ONLY valid JSON:
+
+{{
+  "summary": "",
+  "recommendations": []
+}}
+"""
+
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        analysis_text = response.choices[0].message.content
+        analysis_text = analysis_text.replace("```json", "")
+        analysis_text = analysis_text.replace("```", "")
+        analysis_text = analysis_text.strip()
+
+        try:
+            ai_analysis = json.loads(analysis_text)
+        except:
+            ai_analysis = {
+                "raw": analysis_text
+            }
+
+        return {
+            "site": site_url,
+            "opportunities_found": len(opportunities),
+            "opportunities": opportunities,
+            "ai_analysis": ai_analysis
+        }
+
+    except Exception as e:
+        return {
+            "error": str(e)
+        }

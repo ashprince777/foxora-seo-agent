@@ -7,7 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-COPY foxora-seo-agent-2119f123369f.json .
+COPY secrets/foxora-seo-agent-2119f123369f.json ./secrets/
 
 EXPOSE 8000
 
